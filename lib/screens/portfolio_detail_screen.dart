@@ -2,24 +2,129 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 
+// New model classes for backtest criteria
+class BacktestCriteria {
+  final String startDate;
+  final String endDate;
+  final double initialCash;
+  final List<TechnicalIndicator> indicators;
+  final String strategyLogic;
+  final String rebalanceFrequency;
+
+  BacktestCriteria({
+    required this.startDate,
+    required this.endDate,
+    required this.initialCash,
+    required this.indicators,
+    required this.strategyLogic,
+    required this.rebalanceFrequency,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'start_date': startDate,
+      'end_date': endDate,
+      'initial_cash': initialCash,
+      'indicators': indicators.map((i) => i.toJson()).toList(),
+      'strategy_logic': strategyLogic,
+      'rebalance_frequency': rebalanceFrequency,
+    };
+  }
+
+  BacktestCriteria copyWith({
+    String? startDate,
+    String? endDate,
+    double? initialCash,
+    List<TechnicalIndicator>? indicators,
+    String? strategyLogic,
+    String? rebalanceFrequency,
+  }) {
+    return BacktestCriteria(
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      initialCash: initialCash ?? this.initialCash,
+      indicators: indicators ?? this.indicators,
+      strategyLogic: strategyLogic ?? this.strategyLogic,
+      rebalanceFrequency: rebalanceFrequency ?? this.rebalanceFrequency,
+    );
+  }
+}
+
+class TechnicalIndicator {
+  final String name;
+  final Map<String, dynamic> params;
+  final IndicatorCondition buyCondition;
+  final IndicatorCondition sellCondition;
+
+  TechnicalIndicator({
+    required this.name,
+    required this.params,
+    required this.buyCondition,
+    required this.sellCondition,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'params': params,
+      'buy_condition': buyCondition.toJson(),
+      'sell_condition': sellCondition.toJson(),
+    };
+  }
+}
+
+class IndicatorCondition {
+  final String operator;
+  final double value;
+
+  IndicatorCondition({required this.operator, required this.value});
+
+  Map<String, dynamic> toJson() {
+    return {'operator': operator, 'value': value};
+  }
+}
+
 class PortfolioDetailScreen extends StatefulWidget {
   final Portfolio portfolio;
   final Function(Portfolio) onPortfolioUpdated;
 
   const PortfolioDetailScreen({
-    Key? key,
+    super.key,
     required this.portfolio,
     required this.onPortfolioUpdated,
-  }) : super(key: key);
+  });
 
   @override
-  _PortfolioDetailScreenState createState() => _PortfolioDetailScreenState();
+  State<PortfolioDetailScreen> createState() => _PortfolioDetailScreenState();
 }
 
 class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
   bool _isBacktesting = false;
   Map<String, dynamic>? _backtestResult;
   String? _error;
+
+  // Default backtest criteria
+  late BacktestCriteria _backtestCriteria;
+
+  @override
+  void initState() {
+    super.initState();
+    _backtestCriteria = BacktestCriteria(
+      startDate: '2023-01-01',
+      endDate: '2023-12-31',
+      initialCash: widget.portfolio.initialCash,
+      indicators: [
+        TechnicalIndicator(
+          name: 'RSI',
+          params: {'period': 14},
+          buyCondition: IndicatorCondition(operator: 'less_than', value: 30),
+          sellCondition: IndicatorCondition(operator: 'greater_than', value: 70),
+        ),
+      ],
+      strategyLogic: 'AND',
+      rebalanceFrequency: 'monthly',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +136,12 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
         foregroundColor: Theme.of(context).colorScheme.onSurface,
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh),
+            icon: const Icon(Icons.settings),
+            onPressed: _showBacktestCriteriaDialog,
+            tooltip: 'Backtest Settings',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
             onPressed: _isBacktesting ? null : _runBacktest,
             tooltip: 'Run Backtest',
           ),
@@ -40,28 +150,159 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
       body: RefreshIndicator(
         onRefresh: _refreshData,
         child: SingleChildScrollView(
-          physics: AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildPortfolioSummary(),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               _buildHoldingsSection(),
-              SizedBox(height: 20),
-              _buildBacktestButton(),
+              const SizedBox(height: 20),
+              _buildBacktestSection(),
               if (_error != null) ...[
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 _buildErrorCard(),
               ],
               if (_backtestResult != null) ...[
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 _buildBacktestResults(),
               ],
-              SizedBox(height: 32), // Extra padding at bottom
+              const SizedBox(height: 32),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBacktestSection() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.analytics, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Backtest Configuration',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _buildCriteriaPreview(),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _showBacktestCriteriaDialog,
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Configure'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _isBacktesting ? null : _runBacktest,
+                    icon: _isBacktesting 
+                        ? SizedBox(
+                            width: 20, 
+                            height: 20, 
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Theme.of(context).colorScheme.onPrimary,
+                              ),
+                            ),
+                          )
+                        : const Icon(Icons.play_arrow),
+                    label: Text(_isBacktesting ? 'Running...' : 'Run Backtest'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCriteriaPreview() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.date_range, size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Period: ${_backtestCriteria.startDate} to ${_backtestCriteria.endDate}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.show_chart, size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Indicators: ${_backtestCriteria.indicators.map((i) => i.name).join(', ')}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.autorenew, size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Rebalance: ${_backtestCriteria.rebalanceFrequency}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBacktestCriteriaDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => BacktestCriteriaDialog(
+        initialCriteria: _backtestCriteria,
+        portfolio: widget.portfolio,
+        onCriteriaChanged: (criteria) {
+          setState(() {
+            _backtestCriteria = criteria;
+          });
+        },
       ),
     );
   }
@@ -73,7 +314,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     return Card(
       elevation: 2,
       child: Padding(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -81,7 +322,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
               children: [
                 Icon(Icons.account_balance_wallet, 
                      color: Theme.of(context).colorScheme.primary),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
                   'Portfolio Summary',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -90,11 +331,11 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
                 ),
               ],
             ),
-            Divider(height: 24),
+            const Divider(height: 24),
             _buildSummaryRow('Initial Cash', '\$${_formatCurrency(widget.portfolio.initialCash)}', Icons.attach_money),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _buildSummaryRow('Number of Holdings', '${widget.portfolio.stocks.length}', Icons.list),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _buildSummaryRow(
               'Total Weight', 
               '${totalWeight.toStringAsFixed(1)}%',
@@ -102,9 +343,9 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
               valueColor: isWeightValid ? null : Theme.of(context).colorScheme.error,
             ),
             if (!isWeightValid) ...[
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Container(
-                padding: EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.errorContainer,
                   borderRadius: BorderRadius.circular(8),
@@ -114,7 +355,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
                     Icon(Icons.warning, 
                          size: 16, 
                          color: Theme.of(context).colorScheme.onErrorContainer),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Portfolio weights should total 100%',
@@ -138,7 +379,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     return Row(
       children: [
         Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
-        SizedBox(width: 12),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
             label,
@@ -163,7 +404,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
         Row(
           children: [
             Icon(Icons.trending_up, color: Theme.of(context).colorScheme.primary),
-            SizedBox(width: 8),
+            const SizedBox(width: 8),
             Text(
               'Holdings (${widget.portfolio.stocks.length})',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -172,16 +413,16 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
             ),
           ],
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         if (widget.portfolio.stocks.isEmpty)
           Card(
             child: Padding(
-              padding: EdgeInsets.all(32),
+              padding: const EdgeInsets.all(32),
               child: Center(
                 child: Column(
                   children: [
                     Icon(Icons.inbox, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Text(
                       'No holdings in this portfolio',
                       style: Theme.of(context).textTheme.bodyLarge,
@@ -196,7 +437,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
             final index = entry.key;
             final stock = entry.value;
             return _buildStockCard(stock, index);
-          }).toList(),
+          }),
       ],
     );
   }
@@ -205,9 +446,9 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     final allocation = widget.portfolio.initialCash * stock.weight / 100;
     
     return Card(
-      margin: EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           child: Text(
@@ -220,7 +461,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
         ),
         title: Text(
           stock.symbol,
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text('Weight: ${stock.weight.toStringAsFixed(1)}%'),
         trailing: Column(
@@ -244,46 +485,18 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     );
   }
 
-  Widget _buildBacktestButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _isBacktesting ? null : _runBacktest,
-        icon: _isBacktesting 
-            ? SizedBox(
-                width: 20, 
-                height: 20, 
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              )
-            : Icon(Icons.analytics),
-        label: Text(_isBacktesting ? 'Running Backtest...' : 'Run Backtest'),
-        style: ElevatedButton.styleFrom(
-          padding: EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildErrorCard() {
     return Card(
       color: Theme.of(context).colorScheme.errorContainer,
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Icon(
               Icons.error_outline,
               color: Theme.of(context).colorScheme.onErrorContainer,
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,7 +508,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
                       color: Theme.of(context).colorScheme.onErrorContainer,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
                     _error!,
                     style: TextStyle(
@@ -322,14 +535,14 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     return Card(
       elevation: 4,
       child: Padding(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(Icons.analytics, color: Theme.of(context).colorScheme.primary),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
                   'Backtest Results',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -338,13 +551,13 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
                 ),
               ],
             ),
-            Divider(height: 24),
+            const Divider(height: 24),
             _buildResultRow(
               'Final Value', 
               '\$${_formatCurrency(_backtestResult!['final_value'] ?? 0.0)}',
               Icons.account_balance,
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _buildResultRow(
               'Total Return', 
               '\$${_formatCurrency(_backtestResult!['total_return'] ?? 0.0)}',
@@ -353,7 +566,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
                   ? Colors.green 
                   : Colors.red,
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _buildResultRow(
               'Return %', 
               '${(_backtestResult!['total_return_pct'] ?? 0.0).toStringAsFixed(2)}%',
@@ -362,19 +575,35 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
                   ? Colors.green 
                   : Colors.red,
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _buildResultRow(
               'Sharpe Ratio', 
               '${(_backtestResult!['sharpe_ratio'] ?? 0.0).toStringAsFixed(3)}',
               Icons.speed,
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _buildResultRow(
               'Max Drawdown', 
               '${(_backtestResult!['max_drawdown'] ?? 0.0).toStringAsFixed(2)}%',
               Icons.trending_down,
               valueColor: Colors.red,
             ),
+            if (_backtestResult!['win_rate'] != null) ...[
+              const SizedBox(height: 12),
+              _buildResultRow(
+                'Win Rate', 
+                '${(_backtestResult!['win_rate'] ?? 0.0).toStringAsFixed(1)}%',
+                Icons.check_circle,
+              ),
+            ],
+            if (_backtestResult!['total_trades'] != null) ...[
+              const SizedBox(height: 12),
+              _buildResultRow(
+                'Total Trades', 
+                '${_backtestResult!['total_trades'] ?? 0}',
+                Icons.swap_horiz,
+              ),
+            ],
           ],
         ),
       ),
@@ -385,7 +614,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     return Row(
       children: [
         Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
-        SizedBox(width: 12),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
             label,
@@ -416,7 +645,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
   Future<void> _refreshData() async {
     // Implement refresh logic here if needed
     // This could refetch portfolio data or update holdings
-    await Future.delayed(Duration(seconds: 1)); // Placeholder
+    await Future.delayed(const Duration(seconds: 1)); // Placeholder
   }
 
   Future<void> _runBacktest() async {
@@ -427,7 +656,10 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     });
 
     try {
-      final result = await ApiService.runBacktest(widget.portfolio);
+      final result = await ApiService.runBacktestWithCriteria(
+        widget.portfolio,
+        _backtestCriteria,
+      );
       
       if (mounted) {
         setState(() {
@@ -435,7 +667,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Row(
               children: [
                 Icon(Icons.check_circle, color: Colors.white),
@@ -458,14 +690,14 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
           SnackBar(
             content: Row(
               children: [
-                Icon(Icons.error, color: Colors.white),
-                SizedBox(width: 8),
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
                 Expanded(child: Text('Backtest failed: $e')),
               ],
             ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 5),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -476,5 +708,526 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
         });
       }
     }
+  }
+}
+
+class BacktestCriteriaDialog extends StatefulWidget {
+  final BacktestCriteria initialCriteria;
+  final Portfolio portfolio;
+  final Function(BacktestCriteria) onCriteriaChanged;
+
+  const BacktestCriteriaDialog({
+    super.key,
+    required this.initialCriteria,
+    required this.portfolio,
+    required this.onCriteriaChanged,
+  });
+
+  @override
+  State<BacktestCriteriaDialog> createState() => _BacktestCriteriaDialogState();
+}
+
+class _BacktestCriteriaDialogState extends State<BacktestCriteriaDialog> {
+  late TextEditingController _startDateController;
+  late TextEditingController _endDateController;
+  late TextEditingController _initialCashController;
+  
+  String _selectedRebalanceFrequency = 'monthly';
+  String _selectedStrategyLogic = 'AND';
+  List<TechnicalIndicator> _indicators = [];
+
+  final List<String> _rebalanceOptions = ['daily', 'weekly', 'monthly', 'quarterly'];
+  final List<String> _strategyOptions = ['AND', 'OR'];
+
+  @override
+  void initState() {
+    super.initState();
+    final criteria = widget.initialCriteria;
+    _startDateController = TextEditingController(text: criteria.startDate);
+    _endDateController = TextEditingController(text: criteria.endDate);
+    _initialCashController = TextEditingController(text: criteria.initialCash.toString());
+    _selectedRebalanceFrequency = criteria.rebalanceFrequency;
+    _selectedStrategyLogic = criteria.strategyLogic;
+    _indicators = List.from(criteria.indicators);
+  }
+
+  @override
+  void dispose() {
+    _startDateController.dispose();
+    _endDateController.dispose();
+    _initialCashController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(12),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.tune,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Backtest Configuration',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildBasicSettings(),
+                    const SizedBox(height: 24),
+                    _buildIndicatorsSection(),
+                    const SizedBox(height: 24),
+                    _buildStrategySettings(),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Footer
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _saveCriteria,
+                      child: const Text('Apply Settings'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBasicSettings() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Basic Settings',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _startDateController,
+                    decoration: const InputDecoration(
+                      labelText: 'Start Date',
+                      hintText: 'YYYY-MM-DD',
+                      prefixIcon: Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(),
+                    ),
+                    onTap: () => _selectDate(context, _startDateController),
+                    readOnly: true,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _endDateController,
+                    decoration: const InputDecoration(
+                      labelText: 'End Date',
+                      hintText: 'YYYY-MM-DD',
+                      prefixIcon: Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(),
+                    ),
+                    onTap: () => _selectDate(context, _endDateController),
+                    readOnly: true,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _initialCashController,
+              decoration: const InputDecoration(
+                labelText: 'Initial Cash',
+                prefixIcon: Icon(Icons.attach_money),
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIndicatorsSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Technical Indicators',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _addIndicator,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_indicators.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.show_chart, size: 48, 
+                           color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      const Text('No indicators added'),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ...List.generate(_indicators.length, (index) {
+                return _buildIndicatorCard(_indicators[index], index);
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIndicatorCard(TechnicalIndicator indicator, int index) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.show_chart, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    indicator.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () => _removeIndicator(index),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('Buy when < ${indicator.buyCondition.value}'),
+            Text('Sell when > ${indicator.sellCondition.value}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStrategySettings() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Strategy Settings',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedStrategyLogic,
+              decoration: const InputDecoration(
+                labelText: 'Strategy Logic',
+                border: OutlineInputBorder(),
+              ),
+              items: _strategyOptions.map((option) {
+                return DropdownMenuItem(
+                  value: option,
+                  child: Text(option),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedStrategyLogic = value!;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedRebalanceFrequency,
+              decoration: const InputDecoration(
+                labelText: 'Rebalance Frequency',
+                border: OutlineInputBorder(),
+              ),
+              items: _rebalanceOptions.map((option) {
+                return DropdownMenuItem(
+                  value: option,
+                  child: Text(option.toUpperCase()),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedRebalanceFrequency = value!;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addIndicator() {
+    showDialog(
+      context: context,
+      builder: (context) => _IndicatorDialog(
+        onIndicatorAdded: (indicator) {
+          setState(() {
+            _indicators.add(indicator);
+          });
+        },
+      ),
+    );
+  }
+
+  void _removeIndicator(int index) {
+    setState(() {
+      _indicators.removeAt(index);
+    });
+  }
+
+  Future<void> _selectDate(BuildContext context, TextEditingController controller) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      controller.text = picked.toIso8601String().split('T')[0];
+    }
+  }
+
+  void _saveCriteria() {
+    final criteria = BacktestCriteria(
+      startDate: _startDateController.text,
+      endDate: _endDateController.text,
+      initialCash: double.tryParse(_initialCashController.text) ?? 100000,
+      indicators: _indicators,
+      strategyLogic: _selectedStrategyLogic,
+      rebalanceFrequency: _selectedRebalanceFrequency,
+    );
+    
+    widget.onCriteriaChanged(criteria);
+    Navigator.of(context).pop();
+  }
+}
+
+class _IndicatorDialog extends StatefulWidget {
+  final Function(TechnicalIndicator) onIndicatorAdded;
+
+  const _IndicatorDialog({required this.onIndicatorAdded});
+
+  @override
+  State<_IndicatorDialog> createState() => __IndicatorDialogState();
+}
+
+class __IndicatorDialogState extends State<_IndicatorDialog> {
+  String _selectedIndicator = 'RSI';
+  double _buyValue = 30;
+  double _sellValue = 70;
+  int _period = 14;
+
+  final List<String> _indicators = ['RSI', 'MACD', 'SMA', 'EMA', 'Bollinger Bands'];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Technical Indicator'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<String>(
+            value: _selectedIndicator,
+            decoration: const InputDecoration(
+              labelText: 'Indicator',
+              border: OutlineInputBorder(),
+            ),
+            items: _indicators.map((indicator) {
+              return DropdownMenuItem(
+                value: indicator,
+                child: Text(indicator),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedIndicator = value!;
+                _updateDefaultValues();
+              });
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Period',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            controller: TextEditingController(text: _period.toString()),
+            onChanged: (value) {
+              _period = int.tryParse(value) ?? 14;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Buy Threshold',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            controller: TextEditingController(text: _buyValue.toString()),
+            onChanged: (value) {
+              _buyValue = double.tryParse(value) ?? 30;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Sell Threshold',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            controller: TextEditingController(text: _sellValue.toString()),
+            onChanged: (value) {
+              _sellValue = double.tryParse(value) ?? 70;
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final indicator = TechnicalIndicator(
+              name: _selectedIndicator,
+              params: {'period': _period},
+              buyCondition: IndicatorCondition(operator: 'less_than', value: _buyValue),
+              sellCondition: IndicatorCondition(operator: 'greater_than', value: _sellValue),
+            );
+            widget.onIndicatorAdded(indicator);
+            Navigator.of(context).pop();
+          },
+          child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+
+  void _updateDefaultValues() {
+    switch (_selectedIndicator) {
+      case 'RSI':
+        _buyValue = 30;
+        _sellValue = 70;
+        _period = 14;
+        break;
+      case 'MACD':
+        _buyValue = 0;
+        _sellValue = 0;
+        _period = 12;
+        break;
+      case 'SMA':
+      case 'EMA':
+        _buyValue = 0;
+        _sellValue = 0;
+        _period = 20;
+        break;
+      default:
+        _buyValue = 30;
+        _sellValue = 70;
+        _period = 14;
+    }
+    setState(() {});
   }
 }
