@@ -52,6 +52,33 @@ class ApiService {
     }
   }
 
+  // Method for the portfolio detail screen that takes BacktestCriteria
+  static Future<Map<String, dynamic>> runBacktestWithCriteria(Portfolio portfolio, BacktestCriteria criteria) async {
+    try {
+      final url = Uri.parse("$baseUrl/portfolio/backtest/criteria");
+      final payload = {
+        "portfolio": portfolio.toJson(),
+        "criteria": criteria.toJson(),
+      };
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        throw Exception('Backtest failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      // Return mock results for demo purposes
+      return _generateMockBacktestResultFromCriteria(portfolio, criteria);
+    }
+  }
+
   // Legacy method for backward compatibility
   static Future<Map<String, dynamic>> runBacktest(Portfolio portfolio) async {
     final defaultConfig = BacktestConfig(
@@ -172,6 +199,52 @@ class ApiService {
     );
   }
 
+  // Generate mock results from BacktestCriteria (for portfolio detail screen)
+  static Map<String, dynamic> _generateMockBacktestResultFromCriteria(Portfolio portfolio, BacktestCriteria criteria) {
+    final random = Random();
+    final startDate = DateTime.parse(criteria.startDate);
+    final endDate = DateTime.parse(criteria.endDate);
+    final durationInDays = endDate.difference(startDate).inDays;
+    final initialValue = criteria.initialCash;
+    
+    // Simulate market performance based on duration and indicators
+    double baseReturn = _calculateBaseReturn(durationInDays, criteria.indicators.length);
+    double volatility = _calculateVolatilityFromTechnical(criteria.indicators);
+    
+    // Add some randomness but keep it realistic
+    final returnVariation = (random.nextDouble() - 0.5) * 0.3; // ±15% variation
+    final totalReturnPct = baseReturn + returnVariation;
+    
+    final finalValue = initialValue * (1 + totalReturnPct / 100);
+    final totalReturn = finalValue - initialValue;
+    
+    // Calculate other metrics
+    final sharpeRatio = _calculateSharpeRatio(totalReturnPct, volatility);
+    final maxDrawdown = _calculateMaxDrawdown(totalReturnPct, volatility);
+    
+    // Trading statistics
+    final isActiveStrategy = criteria.indicators.any((i) => 
+        i.name.toUpperCase() == 'RSI' || i.name.toUpperCase() == 'MACD');
+    
+    int totalTrades = 0;
+    double winRate = 0.0;
+    
+    if (isActiveStrategy && criteria.rebalanceFrequency != 'never') {
+      totalTrades = _calculateTotalTrades(durationInDays, criteria.rebalanceFrequency);
+      winRate = 40.0 + random.nextDouble() * 30.0; // 40-70% win rate
+    }
+    
+    return {
+      'final_value': finalValue,
+      'total_return': totalReturn,
+      'total_return_pct': totalReturnPct,
+      'sharpe_ratio': sharpeRatio,
+      'max_drawdown': maxDrawdown,
+      'win_rate': winRate,
+      'total_trades': totalTrades,
+    };
+  }
+
   static double _calculateBaseReturn(int days, int indicatorCount) {
     // Base annual return expectation: 8-12%
     double annualReturn = 8.0 + (indicatorCount * 1.5); // More indicators = potentially better
@@ -179,6 +252,29 @@ class ApiService {
   }
 
   static double _calculateVolatility(List<BacktestIndicator> indicators) {
+    double baseVolatility = 15.0; // 15% base volatility
+    
+    // RSI and other momentum indicators might increase volatility
+    for (var indicator in indicators) {
+      switch (indicator.name.toUpperCase()) {
+        case 'RSI':
+        case 'STOCHASTIC':
+          baseVolatility += 2.0;
+          break;
+        case 'SMA':
+        case 'EMA':
+          baseVolatility -= 1.0; // Moving averages reduce volatility
+          break;
+        case 'MACD':
+          baseVolatility += 1.0;
+          break;
+      }
+    }
+    
+    return max(5.0, min(25.0, baseVolatility)); // Clamp between 5-25%
+  }
+
+  static double _calculateVolatilityFromTechnical(List<TechnicalIndicator> indicators) {
     double baseVolatility = 15.0; // 15% base volatility
     
     // RSI and other momentum indicators might increase volatility
