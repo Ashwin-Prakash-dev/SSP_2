@@ -1,8 +1,11 @@
+// Replace your lib/screens/main_navigation_screen.dart with this:
+
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import 'stock_search_screen.dart';
 import 'portfolio_screen.dart';
 import 'notification_screen.dart';
+import 'market_overview_screen.dart'; // Add this import
 
 class MainNavigationScreen extends StatefulWidget {
   @override
@@ -20,6 +23,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _screens = [
+      MarketOverviewScreen(), // Add this as first screen
       StockSearchScreen(),
       PortfolioScreen(
         portfolios: portfolios,
@@ -48,13 +52,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         children: _screens,
       ),
       bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed, // Add this for 4 tabs
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
             _currentIndex = index;
           });
         },
+        selectedItemColor: Colors.blue.shade800,
+        unselectedItemColor: Colors.grey.shade600,
         items: [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.trending_up),
+            label: 'Market',
+          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.search),
             label: 'Search',
