@@ -2,88 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 
-// New model classes for backtest criteria
-class BacktestCriteria {
-  final String startDate;
-  final String endDate;
-  final double initialCash;
-  final List<TechnicalIndicator> indicators;
-  final String strategyLogic;
-  final String rebalanceFrequency;
-
-  BacktestCriteria({
-    required this.startDate,
-    required this.endDate,
-    required this.initialCash,
-    required this.indicators,
-    required this.strategyLogic,
-    required this.rebalanceFrequency,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'start_date': startDate,
-      'end_date': endDate,
-      'initial_cash': initialCash,
-      'indicators': indicators.map((i) => i.toJson()).toList(),
-      'strategy_logic': strategyLogic,
-      'rebalance_frequency': rebalanceFrequency,
-    };
-  }
-
-  BacktestCriteria copyWith({
-    String? startDate,
-    String? endDate,
-    double? initialCash,
-    List<TechnicalIndicator>? indicators,
-    String? strategyLogic,
-    String? rebalanceFrequency,
-  }) {
-    return BacktestCriteria(
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
-      initialCash: initialCash ?? this.initialCash,
-      indicators: indicators ?? this.indicators,
-      strategyLogic: strategyLogic ?? this.strategyLogic,
-      rebalanceFrequency: rebalanceFrequency ?? this.rebalanceFrequency,
-    );
-  }
-}
-
-class TechnicalIndicator {
-  final String name;
-  final Map<String, dynamic> params;
-  final IndicatorCondition buyCondition;
-  final IndicatorCondition sellCondition;
-
-  TechnicalIndicator({
-    required this.name,
-    required this.params,
-    required this.buyCondition,
-    required this.sellCondition,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'params': params,
-      'buy_condition': buyCondition.toJson(),
-      'sell_condition': sellCondition.toJson(),
-    };
-  }
-}
-
-class IndicatorCondition {
-  final String operator;
-  final double value;
-
-  IndicatorCondition({required this.operator, required this.value});
-
-  Map<String, dynamic> toJson() {
-    return {'operator': operator, 'value': value};
-  }
-}
-
 class PortfolioDetailScreen extends StatefulWidget {
   final Portfolio portfolio;
   final Function(Portfolio) onPortfolioUpdated;
@@ -171,6 +89,85 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
               const SizedBox(height: 32),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBacktestResults() {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.analytics, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Backtest Results',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _buildResultRow(
+              'Final Value',
+              '\$${(_backtestResult!['final_value'] ?? 0.0).toStringAsFixed(2)}',
+              Icons.account_balance,
+            ),
+            const SizedBox(height: 12),
+            _buildResultRow(
+              'Total Return',
+              '\$${(_backtestResult!['total_return'] ?? 0.0).toStringAsFixed(2)}',
+              Icons.trending_up,
+              valueColor: (_backtestResult!['total_return'] ?? 0.0) >= 0 ? Colors.green : Colors.red,
+            ),
+            const SizedBox(height: 12),
+            _buildResultRow(
+              'Return %',
+              '${(_backtestResult!['total_return_pct'] ?? 0.0).toStringAsFixed(2)}%',
+              Icons.percent,
+              valueColor: (_backtestResult!['total_return_pct'] ?? 0.0) >= 0 ? Colors.green : Colors.red,
+            ),
+            if (_backtestResult!['sharpe_ratio'] != null) ...[
+              const SizedBox(height: 12),
+              _buildResultRow(
+                'Sharpe Ratio',
+                '${(_backtestResult!['sharpe_ratio'] ?? 0.0).toStringAsFixed(3)}',
+                Icons.speed,
+              ),
+            ],
+            if (_backtestResult!['max_drawdown'] != null) ...[
+              const SizedBox(height: 12),
+              _buildResultRow(
+                'Max Drawdown',
+                '${(_backtestResult!['max_drawdown'] ?? 0.0).toStringAsFixed(2)}%',
+                Icons.trending_down,
+                valueColor: Colors.red,
+              ),
+            ],
+            if (_backtestResult!['win_rate'] != null) ...[
+              const SizedBox(height: 12),
+              _buildResultRow(
+                'Win Rate',
+                '${(_backtestResult!['win_rate'] ?? 0.0).toStringAsFixed(1)}%',
+                Icons.check_circle,
+              ),
+            ],
+            if (_backtestResult!['total_trades'] != null) ...[
+              const SizedBox(height: 12),
+              _buildResultRow(
+                'Total Trades',
+                '${_backtestResult!['total_trades'] ?? 0}',
+                Icons.swap_horiz,
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -309,7 +306,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
 
   Widget _buildPortfolioSummary() {
     final totalWeight = widget.portfolio.stocks.fold(0.0, (sum, stock) => sum + stock.weight);
-    final isWeightValid = (totalWeight - 100.0).abs() < 0.01; // Allow for small floating point errors
+    final isWeightValid = (totalWeight - 100.0).abs() < 0.01;
     
     return Card(
       elevation: 2,
@@ -531,85 +528,6 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
     );
   }
 
-  Widget _buildBacktestResults() {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.analytics, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'Backtest Results',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            _buildResultRow(
-              'Final Value', 
-              '\$${_formatCurrency(_backtestResult!['final_value'] ?? 0.0)}',
-              Icons.account_balance,
-            ),
-            const SizedBox(height: 12),
-            _buildResultRow(
-              'Total Return', 
-              '\$${_formatCurrency(_backtestResult!['total_return'] ?? 0.0)}',
-              Icons.trending_up,
-              valueColor: (_backtestResult!['total_return'] ?? 0.0) >= 0 
-                  ? Colors.green 
-                  : Colors.red,
-            ),
-            const SizedBox(height: 12),
-            _buildResultRow(
-              'Return %', 
-              '${(_backtestResult!['total_return_pct'] ?? 0.0).toStringAsFixed(2)}%',
-              Icons.percent,
-              valueColor: (_backtestResult!['total_return_pct'] ?? 0.0) >= 0 
-                  ? Colors.green 
-                  : Colors.red,
-            ),
-            const SizedBox(height: 12),
-            _buildResultRow(
-              'Sharpe Ratio', 
-              '${(_backtestResult!['sharpe_ratio'] ?? 0.0).toStringAsFixed(3)}',
-              Icons.speed,
-            ),
-            const SizedBox(height: 12),
-            _buildResultRow(
-              'Max Drawdown', 
-              '${(_backtestResult!['max_drawdown'] ?? 0.0).toStringAsFixed(2)}%',
-              Icons.trending_down,
-              valueColor: Colors.red,
-            ),
-            if (_backtestResult!['win_rate'] != null) ...[
-              const SizedBox(height: 12),
-              _buildResultRow(
-                'Win Rate', 
-                '${(_backtestResult!['win_rate'] ?? 0.0).toStringAsFixed(1)}%',
-                Icons.check_circle,
-              ),
-            ],
-            if (_backtestResult!['total_trades'] != null) ...[
-              const SizedBox(height: 12),
-              _buildResultRow(
-                'Total Trades', 
-                '${_backtestResult!['total_trades'] ?? 0}',
-                Icons.swap_horiz,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildResultRow(String label, String value, IconData icon, {Color? valueColor}) {
     return Row(
       children: [
@@ -643,9 +561,7 @@ class _PortfolioDetailScreenState extends State<PortfolioDetailScreen> {
   }
 
   Future<void> _refreshData() async {
-    // Implement refresh logic here if needed
-    // This could refetch portfolio data or update holdings
-    await Future.delayed(const Duration(seconds: 1)); // Placeholder
+    await Future.delayed(const Duration(seconds: 1));
   }
 
   Future<void> _runBacktest() async {
@@ -813,8 +729,6 @@ class _BacktestCriteriaDialogState extends State<BacktestCriteriaDialog> {
                   children: [
                     _buildBasicSettings(),
                     const SizedBox(height: 24),
-                    _buildIndicatorsSection(),
-                    const SizedBox(height: 24),
                     _buildStrategySettings(),
                   ],
                 ),
@@ -917,88 +831,6 @@ class _BacktestCriteriaDialogState extends State<BacktestCriteriaDialog> {
     );
   }
 
-  Widget _buildIndicatorsSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Technical Indicators',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _addIndicator,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_indicators.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      Icon(Icons.show_chart, size: 48, 
-                           color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 16),
-                      const Text('No indicators added'),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ...List.generate(_indicators.length, (index) {
-                return _buildIndicatorCard(_indicators[index], index);
-              }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIndicatorCard(TechnicalIndicator indicator, int index) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.show_chart, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    indicator.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: () => _removeIndicator(index),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('Buy when < ${indicator.buyCondition.value}'),
-            Text('Sell when > ${indicator.sellCondition.value}'),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildStrategySettings() {
     return Card(
       child: Padding(
@@ -1056,25 +888,6 @@ class _BacktestCriteriaDialogState extends State<BacktestCriteriaDialog> {
     );
   }
 
-  void _addIndicator() {
-    showDialog(
-      context: context,
-      builder: (context) => _IndicatorDialog(
-        onIndicatorAdded: (indicator) {
-          setState(() {
-            _indicators.add(indicator);
-          });
-        },
-      ),
-    );
-  }
-
-  void _removeIndicator(int index) {
-    setState(() {
-      _indicators.removeAt(index);
-    });
-  }
-
   Future<void> _selectDate(BuildContext context, TextEditingController controller) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -1099,135 +912,5 @@ class _BacktestCriteriaDialogState extends State<BacktestCriteriaDialog> {
     
     widget.onCriteriaChanged(criteria);
     Navigator.of(context).pop();
-  }
-}
-
-class _IndicatorDialog extends StatefulWidget {
-  final Function(TechnicalIndicator) onIndicatorAdded;
-
-  const _IndicatorDialog({required this.onIndicatorAdded});
-
-  @override
-  State<_IndicatorDialog> createState() => __IndicatorDialogState();
-}
-
-class __IndicatorDialogState extends State<_IndicatorDialog> {
-  String _selectedIndicator = 'RSI';
-  double _buyValue = 30;
-  double _sellValue = 70;
-  int _period = 14;
-
-  final List<String> _indicators = ['RSI', 'MACD', 'SMA', 'EMA', 'Bollinger Bands'];
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add Technical Indicator'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DropdownButtonFormField<String>(
-            value: _selectedIndicator,
-            decoration: const InputDecoration(
-              labelText: 'Indicator',
-              border: OutlineInputBorder(),
-            ),
-            items: _indicators.map((indicator) {
-              return DropdownMenuItem(
-                value: indicator,
-                child: Text(indicator),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedIndicator = value!;
-                _updateDefaultValues();
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            decoration: const InputDecoration(
-              labelText: 'Period',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
-            controller: TextEditingController(text: _period.toString()),
-            onChanged: (value) {
-              _period = int.tryParse(value) ?? 14;
-            },
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            decoration: const InputDecoration(
-              labelText: 'Buy Threshold',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
-            controller: TextEditingController(text: _buyValue.toString()),
-            onChanged: (value) {
-              _buyValue = double.tryParse(value) ?? 30;
-            },
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            decoration: const InputDecoration(
-              labelText: 'Sell Threshold',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
-            controller: TextEditingController(text: _sellValue.toString()),
-            onChanged: (value) {
-              _sellValue = double.tryParse(value) ?? 70;
-            },
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final indicator = TechnicalIndicator(
-              name: _selectedIndicator,
-              params: {'period': _period},
-              buyCondition: IndicatorCondition(operator: 'less_than', value: _buyValue),
-              sellCondition: IndicatorCondition(operator: 'greater_than', value: _sellValue),
-            );
-            widget.onIndicatorAdded(indicator);
-            Navigator.of(context).pop();
-          },
-          child: const Text('Add'),
-        ),
-      ],
-    );
-  }
-
-  void _updateDefaultValues() {
-    switch (_selectedIndicator) {
-      case 'RSI':
-        _buyValue = 30;
-        _sellValue = 70;
-        _period = 14;
-        break;
-      case 'MACD':
-        _buyValue = 0;
-        _sellValue = 0;
-        _period = 12;
-        break;
-      case 'SMA':
-      case 'EMA':
-        _buyValue = 0;
-        _sellValue = 0;
-        _period = 20;
-        break;
-      default:
-        _buyValue = 30;
-        _sellValue = 70;
-        _period = 14;
-    }
-    setState(() {});
   }
 }
