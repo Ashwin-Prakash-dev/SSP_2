@@ -1,122 +1,401 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:io';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const BacktestApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class BacktestApp extends StatelessWidget {
+  const BacktestApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Stock Backtest',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const BacktestScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class BacktestScreen extends StatefulWidget {
+  const BacktestScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<BacktestScreen> createState() => _BacktestScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _BacktestScreenState extends State<BacktestScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _tickerController = TextEditingController();
+  final _startDateController = TextEditingController();
+  final _endDateController = TextEditingController();
+  final _rsiPeriodController = TextEditingController(text: '14');
+  final _rsiBuyController = TextEditingController(text: '30');
+  final _rsiSellController = TextEditingController(text: '70');
+  final _initialCashController = TextEditingController(text: '100000');
+  
+  bool _isLoading = false;
+  Map<String, dynamic>? _results;
+  String? _error;
 
-  void _incrementCounter() {
+  // API URL based on platform
+  String get apiUrl {
+    if (kIsWeb) {
+      return 'http://localhost:8000';
+    } else if (Platform.isAndroid) {
+      return 'http://10.0.2.2:8000';
+    } else {
+      return 'http://localhost:8000';
+    }
+  }
+
+  @override
+  void dispose() {
+    _tickerController.dispose();
+    _startDateController.dispose();
+    _endDateController.dispose();
+    _rsiPeriodController.dispose();
+    _rsiBuyController.dispose();
+    _rsiSellController.dispose();
+    _initialCashController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectDate(TextEditingController controller) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().subtract(const Duration(days: 365)),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      controller.text = picked.toString().split(' ')[0];
+    }
+  }
+
+  Future<void> _runBacktest() async {
+    if (!_formKey.currentState!.validate()) return;
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isLoading = true;
+      _error = null;
+      _results = null;
     });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$apiUrl/backtest'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'ticker': _tickerController.text.toUpperCase(),
+          'start_date': _startDateController.text,
+          'end_date': _endDateController.text,
+          'strategy': 'RSI',
+          'rsi_period': int.parse(_rsiPeriodController.text),
+          'rsi_buy': int.parse(_rsiBuyController.text),
+          'rsi_sell': int.parse(_rsiSellController.text),
+          'initial_cash': double.parse(_initialCashController.text),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _results = jsonDecode(response.body);
+        });
+      } else {
+        final errorData = jsonDecode(response.body);
+        setState(() {
+          _error = errorData['detail'] ?? 'Unknown error occurred';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to connect to server: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
+        title: const Text('Stock Backtest'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            children: [
+              // Stock Selection
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Stock Selection', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _tickerController,
+                        decoration: const InputDecoration(
+                          labelText: 'Stock Symbol (e.g., AAPL)',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a stock symbol';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _initialCashController,
+                        decoration: const InputDecoration(
+                          labelText: 'Initial Cash (\$)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter initial cash';
+                          }
+                          if (double.tryParse(value) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Date Selection
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Date Range', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _startDateController,
+                              decoration: const InputDecoration(
+                                labelText: 'Start Date',
+                                border: OutlineInputBorder(),
+                                suffixIcon: Icon(Icons.calendar_today),
+                              ),
+                              readOnly: true,
+                              onTap: () => _selectDate(_startDateController),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please select start date';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _endDateController,
+                              decoration: const InputDecoration(
+                                labelText: 'End Date',
+                                border: OutlineInputBorder(),
+                                suffixIcon: Icon(Icons.calendar_today),
+                              ),
+                              readOnly: true,
+                              onTap: () => _selectDate(_endDateController),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please select end date';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // RSI Strategy Settings
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('RSI Strategy Settings', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _rsiPeriodController,
+                              decoration: const InputDecoration(
+                                labelText: 'RSI Period',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) return 'Required';
+                                final num = int.tryParse(value);
+                                if (num == null || num < 5 || num > 50) {
+                                  return 'Must be 5-50';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _rsiBuyController,
+                              decoration: const InputDecoration(
+                                labelText: 'Buy Threshold',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) return 'Required';
+                                final num = int.tryParse(value);
+                                if (num == null || num < 0 || num > 100) {
+                                  return 'Must be 0-100';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _rsiSellController,
+                              decoration: const InputDecoration(
+                                labelText: 'Sell Threshold',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) return 'Required';
+                                final num = int.tryParse(value);
+                                if (num == null || num < 0 || num > 100) {
+                                  return 'Must be 0-100';
+                                }
+                                final buyThreshold = int.tryParse(_rsiBuyController.text);
+                                if (buyThreshold != null && num <= buyThreshold) {
+                                  return 'Must be > buy threshold';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Run Backtest Button
+              SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _runBacktest,
+                  child: _isLoading
+                      ? const CircularProgressIndicator()
+                      : const Text('Run Backtest', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Results
+              if (_error != null)
+                Card(
+                  color: Colors.red.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'Error: $_error',
+                      style: TextStyle(color: Colors.red.shade700),
+                    ),
+                  ),
+                ),
+
+              if (_results != null)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Backtest Results', style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 16),
+                        _buildResultRow('Initial Value', '\$${_results!['initial_value']}'),
+                        _buildResultRow('Final Value', '\$${_results!['final_value']}'),
+                        _buildResultRow('Total Return', '\$${_results!['total_return']}'),
+                        _buildResultRow('Return %', '${_results!['total_return_pct']}%',
+                            color: _results!['total_return_pct'] > 0 ? Colors.green : Colors.red),
+                        const Divider(),
+                        _buildResultRow('Total Trades', '${_results!['total_trades']}'),
+                        _buildResultRow('Winning Trades', '${_results!['winning_trades']}'),
+                        _buildResultRow('Losing Trades', '${_results!['losing_trades']}'),
+                        _buildResultRow('Win Rate', '${_results!['win_rate']}%'),
+                        _buildResultRow('Max Drawdown', '${_results!['max_drawdown']}%'),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  Widget _buildResultRow(String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
