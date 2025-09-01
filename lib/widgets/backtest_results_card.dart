@@ -7,7 +7,10 @@ class BacktestResultsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isProfit = (results['total_return'] ?? 0.0) > 0;
+    // Safely get values with proper null checks and type casting
+    final totalReturn = (results['total_return'] ?? 0.0) as num;
+    final totalReturnPct = (results['total_return_pct'] ?? 0.0) as num;
+    final isProfit = totalReturn > 0;
     
     return Card(
       elevation: 4,
@@ -63,7 +66,7 @@ class BacktestResultsCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${(results['total_return_pct'] ?? 0.0).toStringAsFixed(2)}%',
+                    '${totalReturnPct.toStringAsFixed(2)}%',
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -71,7 +74,7 @@ class BacktestResultsCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '\$${(results['total_return'] ?? 0.0).toStringAsFixed(2)}',
+                    '\$${totalReturn.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -90,7 +93,7 @@ class BacktestResultsCard extends StatelessWidget {
                 Expanded(
                   child: _buildValueTile(
                     'Initial Value',
-                    '\$${(results['initial_value'] ?? 0.0).toStringAsFixed(2)}',
+                    '\$${((results['initial_value'] ?? 0.0) as num).toStringAsFixed(2)}',
                     Icons.account_balance_wallet,
                     Colors.blue,
                   ),
@@ -99,7 +102,7 @@ class BacktestResultsCard extends StatelessWidget {
                 Expanded(
                   child: _buildValueTile(
                     'Final Value',
-                    '\$${(results['final_value'] ?? 0.0).toStringAsFixed(2)}',
+                    '\$${((results['final_value'] ?? 0.0) as num).toStringAsFixed(2)}',
                     Icons.account_balance,
                     isProfit ? Colors.green : Colors.red,
                   ),
@@ -128,16 +131,16 @@ class BacktestResultsCard extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  _buildResultRow('Total Trades', '${results['total_trades'] ?? 0}'),
-                  _buildResultRow('Winning Trades', '${results['winning_trades'] ?? 0}', 
-                      valueColor: Colors.green.shade700),
-                  _buildResultRow('Losing Trades', '${results['losing_trades'] ?? 0}', 
-                      valueColor: Colors.red.shade700),
+                  _buildResultRow('Total Trades', '${(results['total_trades'] ?? 0) as int}'),
+                  _buildResultRow('Winning Trades', '${(results['winning_trades'] ?? 0) as int}', 
+                      valueColor: const Color(0xFF2E7D32)), // Colors.green.shade700
+                  _buildResultRow('Losing Trades', '${(results['losing_trades'] ?? 0) as int}', 
+                      valueColor: const Color(0xFFC62828)), // Colors.red.shade700
                   const Divider(height: 20),
-                  _buildResultRow('Win Rate', '${(results['win_rate'] ?? 0.0).toStringAsFixed(1)}%',
-                      valueColor: _getWinRateColor(results['win_rate'] ?? 0.0)),
-                  _buildResultRow('Max Drawdown', '${(results['max_drawdown'] ?? 0.0).toStringAsFixed(1)}%',
-                      valueColor: Colors.red.shade700),
+                  _buildResultRow('Win Rate', '${((results['win_rate'] ?? 0.0) as num).toStringAsFixed(1)}%',
+                      valueColor: _getWinRateColor((results['win_rate'] ?? 0.0) as num)),
+                  _buildResultRow('Max Drawdown', '${((results['max_drawdown'] ?? 0.0) as num).toStringAsFixed(1)}%',
+                      valueColor: const Color(0xFFC62828)), // Colors.red.shade700
                 ],
               ),
             ),
@@ -156,9 +159,9 @@ class BacktestResultsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26), // Equivalent to withOpacity(0.1)
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withAlpha(77)), // Equivalent to withOpacity(0.3)
       ),
       child: Column(
         children: [
@@ -168,8 +171,9 @@ class BacktestResultsCard extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: color.shade700,
+              color: Color.lerp(color, Colors.black, 0.3)!,
             ),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 2),
           Text(
@@ -177,8 +181,9 @@ class BacktestResultsCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: color.shade800,
+              color: Color.lerp(color, Colors.black, 0.2)!,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -249,24 +254,27 @@ class BacktestResultsCard extends StatelessWidget {
                 ),
               ],
             ),
-          )).toList(),
+          )),
         ],
       ),
     );
   }
 
-  Color _getWinRateColor(double winRate) {
-    if (winRate >= 60) return Colors.green.shade700;
-    if (winRate >= 40) return Colors.orange.shade700;
-    return Colors.red.shade700;
+  Color _getWinRateColor(num winRate) {
+    final rate = winRate.toDouble();
+    if (rate >= 60) return const Color(0xFF2E7D32); // Colors.green.shade700
+    if (rate >= 40) return const Color(0xFFE65100); // Colors.orange.shade700
+    return const Color(0xFFC62828); // Colors.red.shade700
   }
 
   List<String> _generateInsights() {
     final insights = <String>[];
-    final winRate = results['win_rate'] ?? 0.0;
-    final totalReturn = results['total_return_pct'] ?? 0.0;
-    final maxDrawdown = results['max_drawdown'] ?? 0.0;
-    final totalTrades = results['total_trades'] ?? 0;
+    
+    // Safely extract values with proper type casting
+    final winRate = (results['win_rate'] ?? 0.0) as num;
+    final totalReturn = (results['total_return_pct'] ?? 0.0) as num;
+    final maxDrawdown = (results['max_drawdown'] ?? 0.0) as num;
+    final totalTrades = (results['total_trades'] ?? 0) as int;
 
     // Win rate insights
     if (winRate >= 70) {
@@ -302,7 +310,7 @@ class BacktestResultsCard extends StatelessWidget {
 
     // Risk-reward insights
     if (totalReturn > 0 && maxDrawdown > 0) {
-      final riskRewardRatio = totalReturn / maxDrawdown;
+      final riskRewardRatio = totalReturn.toDouble() / maxDrawdown.toDouble();
       if (riskRewardRatio > 2) {
         insights.add('Favorable risk-reward ratio indicates efficient capital utilization');
       } else if (riskRewardRatio < 0.5) {
