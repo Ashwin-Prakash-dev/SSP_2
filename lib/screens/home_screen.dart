@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../widgets/company_info_card.dart';
 import '../widgets/technical_analysis_card.dart';
 import '../widgets/sentiment_card.dart';
+import '../widgets/stock_autocomplete.dart';
 import 'backtest_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,8 +20,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _stockData;
   String? _error;
 
-  Future<void> _searchCompany() async {
-    if (_searchController.text.isEmpty) return;
+  Future<void> _searchCompany([String? symbol]) async {
+    final searchTerm = symbol ?? _searchController.text;
+    if (searchTerm.isEmpty) return;
 
     setState(() {
       _isLoading = true;
@@ -29,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final data = await _apiService.getStockInfo(_searchController.text.toUpperCase());
+      final data = await _apiService.getStockInfo(searchTerm.toUpperCase());
       setState(() {
         _stockData = data;
       });
@@ -42,6 +44,11 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _onStockSelected(String symbol, String companyName) {
+    _searchController.text = '$symbol - $companyName';
+    _searchCompany(symbol);
   }
 
   @override
@@ -71,32 +78,12 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Search Bar
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      labelText: 'Search Stock Symbol (e.g., AAPL, MSFT)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.search),
-                    ),
-                    onSubmitted: (_) => _searchCompany(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _searchCompany,
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Search'),
-                ),
-              ],
+            // Search Bar with Autocomplete
+            StockAutocomplete(
+              controller: _searchController,
+              onStockSelected: _onStockSelected,
+              onSearch: () => _searchCompany(),
+              isLoading: _isLoading,
             ),
 
             const SizedBox(height: 16),
@@ -147,11 +134,21 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               SizedBox(height: 16),
                               Text(
-                                'Search for a stock symbol to view detailed analysis',
+                                'Start typing a stock symbol or company name to search',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Colors.grey,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Examples: AAPL, Apple, Microsoft, TSLA',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                  fontStyle: FontStyle.italic,
                                 ),
                               ),
                             ],

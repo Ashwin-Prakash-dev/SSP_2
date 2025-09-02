@@ -1,5 +1,5 @@
-name: retrotrade
-description: A Flutter app for stock backtesting
+name: backtest_app
+description: A Flutter app for stock analysis and backtesting
 
 publish_to: 'none'
 
@@ -19,4 +19,4 @@ dev_dependencies:
   flutter_lints: ^3.0.0
 
 flutter:
-  uses-material-design: true
+  uses-material-design: true  
