@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 import backtrader as bt
@@ -7,7 +7,9 @@ import traceback
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
+import requests
+import json
 
 app = FastAPI(title="Stock Analysis & Backtest API", version="1.0.0")
 
@@ -19,6 +21,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Pydantic models
+class StockSuggestion(BaseModel):
+    symbol: str
+    company_name: str
+    match_type: str = "symbol"
 
 class StrategyInput(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10, description="Stock ticker symbol")
@@ -98,6 +106,88 @@ class StockInfo(BaseModel):
     analyst_hold: int
     analyst_sell: int
     target_price: float
+
+# Popular stock symbols for suggestions - expanded list
+POPULAR_STOCKS = {
+    # Technology
+    'AAPL': 'Apple Inc.',
+    'MSFT': 'Microsoft Corporation',
+    'GOOGL': 'Alphabet Inc. Class A',
+    'GOOG': 'Alphabet Inc. Class C',
+    'AMZN': 'Amazon.com Inc.',
+    'TSLA': 'Tesla Inc.',
+    'META': 'Meta Platforms Inc.',
+    'NVDA': 'NVIDIA Corporation',
+    'NFLX': 'Netflix Inc.',
+    'ORCL': 'Oracle Corporation',
+    'ADBE': 'Adobe Inc.',
+    'CRM': 'Salesforce Inc.',
+    'INTC': 'Intel Corporation',
+    'AMD': 'Advanced Micro Devices Inc.',
+    'IBM': 'International Business Machines Corporation',
+    
+    # Financial
+    'JPM': 'JPMorgan Chase & Co.',
+    'BAC': 'Bank of America Corporation',
+    'WFC': 'Wells Fargo & Company',
+    'GS': 'The Goldman Sachs Group Inc.',
+    'MS': 'Morgan Stanley',
+    'C': 'Citigroup Inc.',
+    'BRK.A': 'Berkshire Hathaway Inc. Class A',
+    'BRK.B': 'Berkshire Hathaway Inc. Class B',
+    'V': 'Visa Inc.',
+    'MA': 'Mastercard Incorporated',
+    'PYPL': 'PayPal Holdings Inc.',
+    'AXP': 'American Express Company',
+    
+    # Healthcare
+    'JNJ': 'Johnson & Johnson',
+    'PFE': 'Pfizer Inc.',
+    'UNH': 'UnitedHealth Group Incorporated',
+    'ABBV': 'AbbVie Inc.',
+    'TMO': 'Thermo Fisher Scientific Inc.',
+    'ABT': 'Abbott Laboratories',
+    'DHR': 'Danaher Corporation',
+    'BMY': 'Bristol-Myers Squibb Company',
+    'LLY': 'Eli Lilly and Company',
+    'MRK': 'Merck & Co. Inc.',
+    
+    # Consumer
+    'WMT': 'Walmart Inc.',
+    'PG': 'The Procter & Gamble Company',
+    'KO': 'The Coca-Cola Company',
+    'PEP': 'PepsiCo Inc.',
+    'NKE': 'NIKE Inc.',
+    'MCD': 'McDonald\'s Corporation',
+    'SBUX': 'Starbucks Corporation',
+    'HD': 'The Home Depot Inc.',
+    'TGT': 'Target Corporation',
+    'COST': 'Costco Wholesale Corporation',
+    
+    # Energy
+    'XOM': 'Exxon Mobil Corporation',
+    'CVX': 'Chevron Corporation',
+    'COP': 'ConocoPhillips',
+    'SLB': 'Schlumberger Limited',
+    'EOG': 'EOG Resources Inc.',
+    
+    # Industrial
+    'BA': 'The Boeing Company',
+    'GE': 'General Electric Company',
+    'CAT': 'Caterpillar Inc.',
+    'MMM': '3M Company',
+    'HON': 'Honeywell International Inc.',
+    
+    # Telecommunications
+    'VZ': 'Verizon Communications Inc.',
+    'T': 'AT&T Inc.',
+    'TMUS': 'T-Mobile US Inc.',
+    
+    # Real Estate
+    'AMT': 'American Tower Corporation',
+    'PLD': 'Prologis Inc.',
+    'CCI': 'Crown Castle International Corp.',
+}
 
 class RSIStrategy(bt.Strategy):
     params = (
@@ -290,6 +380,60 @@ def generate_sentiment_data(symbol, current_price, change_percent):
             'sentiment_factors': [{"factor": "Market Analysis", "impact": "Neutral"}],
         }
 
+def search_stock_suggestions(query: str, limit: int = 10) -> List[StockSuggestion]:
+    """Search for stock suggestions based on query"""
+    suggestions = []
+    query_upper = query.upper().strip()
+    query_lower = query.lower().strip()
+    
+    if not query_upper:
+        return []
+    
+    # First, search by exact symbol match
+    for symbol, name in POPULAR_STOCKS.items():
+        if symbol == query_upper:
+            suggestions.append(StockSuggestion(
+                symbol=symbol,
+                company_name=name,
+                match_type="symbol"
+            ))
+    
+    # Then, search by symbol prefix
+    for symbol, name in POPULAR_STOCKS.items():
+        if symbol != query_upper and symbol.startswith(query_upper):
+            suggestions.append(StockSuggestion(
+                symbol=symbol,
+                company_name=name,
+                match_type="symbol"
+            ))
+    
+    # Then, search by company name
+    for symbol, name in POPULAR_STOCKS.items():
+        if (symbol not in [s.symbol for s in suggestions] and 
+            query_lower in name.lower()):
+            suggestions.append(StockSuggestion(
+                symbol=symbol,
+                company_name=name,
+                match_type="company"
+            ))
+    
+    # Try to validate with yfinance for unknown symbols
+    if len(suggestions) == 0 and len(query_upper) <= 5:
+        try:
+            # Quick validation with yfinance
+            ticker = yf.Ticker(query_upper)
+            info = ticker.info
+            if info and 'longName' in info:
+                suggestions.append(StockSuggestion(
+                    symbol=query_upper,
+                    company_name=info.get('longName', f"{query_upper} Corporation"),
+                    match_type="symbol"
+                ))
+        except:
+            pass  # If validation fails, just return empty list
+    
+    return suggestions[:limit]
+
 @app.get("/")
 def read_root():
     return {"message": "Stock Analysis & Backtest API is running"}
@@ -297,6 +441,17 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/stock-suggestions", response_model=List[StockSuggestion])
+def get_stock_suggestions(q: str = Query(..., min_length=1, description="Search query for stock symbols or company names")):
+    """Get stock suggestions based on search query"""
+    try:
+        suggestions = search_stock_suggestions(q, limit=10)
+        return suggestions
+    except Exception as e:
+        print(f"Error in stock suggestions: {str(e)}")
+        # Return empty list instead of error to prevent Flutter app crashes
+        return []
 
 @app.get("/stock-info/{symbol}", response_model=StockInfo)
 def get_stock_info(symbol: str):
@@ -364,10 +519,10 @@ def get_stock_info(symbol: str):
             long_term_score=sentiment_data['long_term_score'],
             sentiment_factors=sentiment_data['sentiment_factors'],
             
-            # Mock analyst data
-            analyst_buy=np.random.randint(3, 8),
-            analyst_hold=np.random.randint(2, 5),
-            analyst_sell=np.random.randint(1, 3),
+            # Mock analyst data based on sentiment and price movement
+            analyst_buy=max(1, int(5 + (change_percent * 0.5) + np.random.normal(0, 1))),
+            analyst_hold=max(1, int(3 + np.random.normal(0, 0.5))),
+            analyst_sell=max(0, int(2 - (change_percent * 0.3) + np.random.normal(0, 0.5))),
             target_price=float(current_price * np.random.uniform(1.05, 1.15)),
         )
         
