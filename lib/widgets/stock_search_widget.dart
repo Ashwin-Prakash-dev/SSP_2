@@ -21,7 +21,7 @@ class _StockSearchWidgetState extends State<StockSearchWidget> {
   final FocusNode _focusNode = FocusNode();
   final ApiService _apiService = ApiService();
   
-  List<StockSearchResult> _searchResults = [];
+  List<StockSuggestion> _searchResults = [];
   bool _isSearching = false;
   bool _showResults = false;
   Timer? _debounceTimer;
@@ -83,7 +83,7 @@ class _StockSearchWidgetState extends State<StockSearchWidget> {
     });
 
     try {
-      final results = await _apiService.searchStocks(query);
+      final results = await _apiService.getStockSuggestions(query);
       if (mounted) {
         setState(() {
           _searchResults = results;
@@ -102,7 +102,7 @@ class _StockSearchWidgetState extends State<StockSearchWidget> {
     }
   }
 
-  void _selectStock(StockSearchResult stock) {
+  void _selectStock(StockSuggestion stock) {
     _controller.text = '${stock.symbol} - ${stock.companyName}';
     setState(() {
       _showResults = false;
@@ -220,37 +220,23 @@ class _StockSearchWidgetState extends State<StockSearchWidget> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (stock.sector != null)
-                                Text(
-                                  stock.sector!,
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 12,
-                                  ),
+                              Text(
+                                'Match type: ${stock.matchType}',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
                                 ),
+                              ),
                             ],
                           ),
                         ),
                         
-                        // Exchange badge
-                        if (stock.exchange != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              stock.exchange!,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
+                        // Arrow icon
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.grey.shade400,
+                        ),
                       ],
                     ),
                   ),

@@ -19,9 +19,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = false;
   Map<String, dynamic>? _stockData;
   String? _error;
+  String? _currentSymbol; // Track the current symbol separately
 
   Future<void> _searchCompany([String? symbol]) async {
-    final searchTerm = symbol ?? _searchController.text;
+    final searchTerm = symbol ?? _extractSymbolFromText(_searchController.text);
     if (searchTerm.isEmpty) return;
 
     setState(() {
@@ -34,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final data = await _apiService.getStockInfo(searchTerm.toUpperCase());
       setState(() {
         _stockData = data;
+        _currentSymbol = searchTerm.toUpperCase();
       });
     } catch (e) {
       setState(() {
@@ -44,6 +46,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  String _extractSymbolFromText(String text) {
+    // If the text contains " - ", extract the symbol part
+    if (text.contains(' - ')) {
+      return text.split(' - ')[0].trim();
+    }
+    // Otherwise, assume it's just a symbol
+    return text.trim();
   }
 
   void _onStockSelected(String symbol, String companyName) {
@@ -65,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => BacktestScreen(
-                    initialTicker: _stockData?['symbol'] ?? '',
+                    initialTicker: _currentSymbol ?? '',
                   ),
                 ),
               );
