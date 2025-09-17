@@ -89,7 +89,6 @@ class _BacktestScreenState extends State<BacktestScreen> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
